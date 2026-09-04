@@ -1,0 +1,52 @@
+# FastAPI service Dockerfile
+# Multi-stage build to minimize image size
+
+FROM python:3.11-slim-bullseye AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and build wheels
+COPY requirements.txt /tmp/requirements.txt
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /tmp/wheels -r /tmp/requirements.txt
+
+
+FROM python:3.11-slim-bullseye
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    MLFLOW_MODEL_NAME=ChurnPredictionModel \
+    MLFLOW_MODEL_STAGE=Production \
+    MLFLOW_TRACKING_URI=http://mlflow:5000
+
+# Set working directory
+WORKDIR /app
+
+# Copy wheels from builder and install
+COPY --from=builder /tmp/wheels /tmp/wheels
+COPY --from=builder /tmp/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache /tmp/wheels/* && \
+    rm -rf /tmp/wheels /tmp/requirements.txt
+
+# Copy application code
+COPY src/ ./src/
+COPY data/ ./data/
+COPY .env.example ./
+
+# Create non-root user for security
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose the FastAPI port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
+
+# Run the FastAPI application with uvicorn
+CMD ["python", "-m", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

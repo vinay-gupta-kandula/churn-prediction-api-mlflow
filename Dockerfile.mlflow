@@ -1,0 +1,42 @@
+# MLflow tracking server Dockerfile
+
+FROM python:3.11-slim-bullseye
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Set working directory
+WORKDIR /app
+
+# Install MLflow and dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir \
+    mlflow>=2.9.0 \
+    gunicorn \
+    psutil
+
+# Create directories for MLflow
+RUN mkdir -p /app/mlruns /app/mlartifacts
+
+# Create non-root user for security
+RUN useradd -m -u 1000 mlflow && chown -R mlflow:mlflow /app
+USER mlflow
+
+# Expose the MLflow UI port
+EXPOSE 5000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000').read()" || exit 1
+
+# Run the MLflow tracking server
+# Using file-based backend store and artifact store for simplicity and persistence
+CMD ["mlflow", "server", \
+     "--host", "0.0.0.0", \
+     "--port", "5000", \
+     "--backend-store-uri", "sqlite:////app/mlruns/mlflow.db", \
+    "--default-artifact-root", "/app/mlartifacts", \
+    "--allowed-hosts", "mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000"]

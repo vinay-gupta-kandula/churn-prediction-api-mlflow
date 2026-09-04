@@ -1,0 +1,61 @@
+services:
+  mlflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.mlflow
+    container_name: churn-mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/app/mlruns
+      - mlflow_artifacts:/app/mlartifacts
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - BACKEND_STORE_URI=sqlite:////app/mlruns/mlflow.db
+    networks:
+      - churn_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: churn-api
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_MODEL_NAME=ChurnPredictionModel
+      - MLFLOW_MODEL_STAGE=Production
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data:/app/data:ro
+      - mlflow_artifacts:/app/mlartifacts
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    networks:
+      - churn_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  churn_network:
+    driver: bridge
+
+volumes:
+  mlflow_data:
+    driver: local
+  mlflow_artifacts:
+    driver: local
