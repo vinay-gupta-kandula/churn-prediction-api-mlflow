@@ -55,7 +55,7 @@ A containerized REST API for customer churn prediction. The project covers model
 
 ```bash
 # Clone the repository
-git clone <repository_url>
+git clone https://github.com/vinay-gupta-kandula/churn-prediction-api-mlflow
 cd churn-prediction-api-mlflow
 
 # Download the Telco Customer Churn dataset
